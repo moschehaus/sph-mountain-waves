@@ -37,6 +37,13 @@ function Grid(dr::Float64, symm::Symbol)::Grid
     end
 end
 
+function Grid(dr::Float64, symm::Symbol, N::Float64)::Grid
+    return @match symm begin
+        :exp => Expgrid(dr, N)
+        _    => @error("Unsupported grid type: "*string(symm))
+    end
+end
+
 function dimension(::Grid2)::Int64
     return 2
 end
@@ -64,6 +71,36 @@ function covering(grid::Squaregrid, s::Shape)::Vector{RealVector}
 	end
     return xs
 end
+
+
+mutable struct Expgrid <: Grid2
+    dr::Float64
+    N::Float64
+    Expgrid(dr::Float64,N::Float64)=new(dr,N)
+end
+
+function covering(grid::Expgrid, s::Shape)::Vector{RealVector}
+    N=grid.N
+    H=7.99e3 #scale atmosphere height
+    γ=7/5
+    g=9.81
+    ρ₀=1.177
+    xs=RealVector[]
+    rect=boundarybox(s)
+    i_min = Int64(floor(rect.x1_min/grid.dr))
+    j_min = Int64(floor(rect.x2_min/grid.dr))
+    i_max = Int64(ceil(rect.x1_max/grid.dr))
+    j_max = Int64(ceil(rect.x2_max/grid.dr))
+    for i in i_min:i_max, j in j_min:j_max
+        x1=j*grid.dr
+        x2=ρ₀*exp(-j*grid.dr*(N/g+1/(H*γ)))
+        x=RealVector(x1,x2,0.)
+        if is_inside(x,s)
+            push!(xs,x)
+        end
+    end
+    return xs
+end    
 
 mutable struct Hexagrid <: Grid2
     dr::Float64

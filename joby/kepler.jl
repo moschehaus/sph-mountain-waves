@@ -1,0 +1,16 @@
+import Pkg
+Pkg.add("Printf")
+Pkg.add("SmoothedParticles")
+Pkg.add("Plots")
+Pkg.add("CSV")
+Pkg.add("DataFrames")
+Pkg.add("LaTeXStrings")
+Pkg.add("Parameters")
+Pkg.add("QuadGK")
+Pkg.add("Interpolations")
+Pkg.add("Roots")
+Pkg.add("DataFrames")
+
+include("utils/FixPA.jl")
+include("Kepler_vortex.jl")
+cavity_flow.main()
