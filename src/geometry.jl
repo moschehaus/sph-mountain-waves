@@ -99,7 +99,7 @@ end
 """
     Witch(H::Float64,a::Float64) <: Shape
 
-Define a shape as the Witch of Agnesi profile with height H and width a
+Define a shape as the Witch of Agnesi profile with height H and width a. Work.
 """
 struct Witch <: Shape
     H::Float64

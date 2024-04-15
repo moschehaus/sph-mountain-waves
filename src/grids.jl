@@ -81,7 +81,7 @@ end
 
 function covering(grid::Expgrid, s::Shape)::Vector{RealVector}
     N=grid.N
-    H=7.99e3 #scale atmosphere height
+    H=7.99e3/1e4 #scale atmosphere height
     γ=7/5
     g=9.81
     ρ₀=1.177
