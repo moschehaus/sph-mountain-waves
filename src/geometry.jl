@@ -104,6 +104,7 @@ Define a shape as the Witch of Agnesi profile with height H and width a. Work.
 struct Witch <: Shape
     H::Float64
     a::Float64
+    Witch(H::Float64,a::Float64)=new(H,a)
 end
 
 function is_inside(x::RealVector,w::Witch)::Bool

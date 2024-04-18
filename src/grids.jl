@@ -80,27 +80,32 @@ mutable struct Expgrid <: Grid2
 end
 
 function covering(grid::Expgrid, s::Shape)::Vector{RealVector}
-    N=grid.N
-    H=7.99e3/1e4 #scale atmosphere height
-    γ=7/5
-    g=9.81
-    ρ₀=1.177
-    xs=RealVector[]
-    rect=boundarybox(s)
-    i_min = Int64(floor(rect.x1_min/grid.dr))
-    j_min = Int64(floor(rect.x2_min/grid.dr))
-    i_max = Int64(ceil(rect.x1_max/grid.dr))
-    j_max = Int64(ceil(rect.x2_max/grid.dr))
-    for i in i_min:i_max, j in j_min:j_max
-        x1=j*grid.dr
-        x2=ρ₀*exp(-j*grid.dr*(N/g+1/(H*γ)))
-        x=RealVector(x1,x2,0.)
-        if is_inside(x,s)
-            push!(xs,x)
+    N = grid.N
+    H = 7.99e3 / 1e4  # scale atmosphere height
+    γ = 7 / 5
+    g = 9.81
+    ρ₀ = 1.177
+    xs = RealVector[]
+    rect = boundarybox(s)
+    i_min = Int64(floor(rect.x1_min / grid.dr))
+    j_min = Int64(floor(rect.x2_min / grid.dr))
+    i_max = Int64(ceil(rect.x1_max / grid.dr))
+    j_max_base = Int64(ceil(rect.x2_max / grid.dr))
+
+    for i in i_min:i_max
+        x1 = i * grid.dr
+        j_max_exp = Int64(ceil(-log(ρ₀ / (grid.dr * (N / g + 1 / (H * γ)))) / grid.dr))
+        j_max=min(j_max_exp,j_max_base)
+        for j in j_min:j_max
+            x2 = ρ₀ * exp(-j * grid.dr * (N / g + 1 / (H * γ)))
+            x = RealVector(x1, x2, 0.0)
+            if is_inside(x, s)
+                push!(xs, x)
+            end
         end
     end
     return xs
-end    
+end
 
 mutable struct Hexagrid <: Grid2
     dr::Float64

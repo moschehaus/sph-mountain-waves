@@ -28,6 +28,7 @@ Manifest.toml
 examples/results
 tests/area_tests
 tests/volume_tests
+mtn-wvs/results
 
 #experiments
 experiments
