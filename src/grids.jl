@@ -92,16 +92,12 @@ function covering(grid::Expgrid, s::Shape)::Vector{RealVector}
     i_max = Int64(ceil(rect.x1_max / grid.dr))
     j_max_base = Int64(ceil(rect.x2_max / grid.dr))
 
-    for i in i_min:i_max
+    for i in i_min:i_max for j in j_min:j_max
         x1 = i * grid.dr
-        j_max_exp = Int64(ceil(-log(ρ₀ / (grid.dr * (N / g + 1 / (H * γ)))) / grid.dr))
-        j_max=min(j_max_exp,j_max_base)
-        for j in j_min:j_max
-            x2 = ρ₀ * exp(-j * grid.dr * (N / g + 1 / (H * γ)))
-            x = RealVector(x1, x2, 0.0)
-            if is_inside(x, s)
-                push!(xs, x)
-            end
+        x2 = ρ₀ * exp(-j * grid.dr * (N / g + 1 / (H * γ)))
+        x = RealVector(x1, x2, 0.0)
+        if is_inside(x, s)
+            push!(xs, x)
         end
     end
     return xs

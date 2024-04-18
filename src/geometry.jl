@@ -113,7 +113,7 @@ function is_inside(x::RealVector,w::Witch)::Bool
 end
 
 function boundarybox(w::Witch)::Box
-    return Rectangle(-5.0*w.a,0.0,5.0*w.a,w.H) #technically, the profile is from -∞ to +∞
+    return Rectangle(-10.0*w.a,0.0,10.0*w.a,w.H) #technically, the profile is from -∞ to +∞
 end    
 
 """
