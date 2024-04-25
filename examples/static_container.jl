@@ -28,7 +28,7 @@ const h = 1.8*dr        #size of kernel support
 const rho0 = 1000.0     #fluid density
 const m = rho0*dr^2     #particle mass
 const c = 40.0          #numerical speed of sound
-const g = -VECY         #gravitational acceleration
+const g = -9.81*VECY         #gravitational acceleration
 const mu = 8.4e-4       #dynamic viscosity of water
 
 const water_depth = 0.14
