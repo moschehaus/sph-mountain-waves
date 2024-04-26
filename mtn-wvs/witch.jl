@@ -20,12 +20,12 @@ Declare constants
 
 #geometry parameters
 #scale=1e0                       #scale to make simulation smaller for testing
-const dom_height = 260e3   #height of the domain 
+const dom_height = 26e3   #height of the domain 
 const dom_length = 400e3  #length of the domain
-const dr = dom_height/150	    #average particle distance (decrease to make finer simulation)
+const dr = dom_height/137	    #average particle distance (decrease to make finer simulation)
 const h = 2.4*dr              
 const bc_width = 6*dr                 
-const hₘ = dom_height/2            #parameters for the Witch of Agnesi profile; mountain height
+const hₘ = 100.            #parameters for the Witch of Agnesi profile; mountain height
 const a = 10e3           #parameters for the Witch of Agnesi profile; mountain width
 
 
@@ -51,7 +51,7 @@ const zₜ=dom_height
 
 #temporal parameters
 const dt = 0.1*h/c                     #time step
-const t_end = 200                      #end of simulation, 4*3600
+const t_end = 200               #end of simulation, 4*3600
 const dt_frame = max(dt, t_end/200)    #how often data is saved
 
 #particle types
@@ -70,12 +70,14 @@ mutable struct Particle <: AbstractParticle
     Du::RealVector # acceleration
     rho::Float64 # density
     Drho::Float64  # density rate
+    #m::Float64 #mass of the particle
     P::Float64  # pressure
     type::Float64 # particle type
     
     function Particle(x, u, type)
-        obj = new(x, u, VEC0, 0.0, 0.0, 0.0, type)  # initialize Drho, P, Du as zero
+        obj = new(x, u, VEC0,0.0,0.0,0.0, type)  # initialize Drho, P, Du as zero
         set_density!(obj)  # call set_density! function to set rho
+       #obj.m=obj.rho*dr^2 # set the mass of the particle according to its density
         return obj
     end
 end
@@ -92,12 +94,12 @@ function make_system()
     ground = Specification(fence,x->(x[2] < 0 && x[1]<=dom_length/2))
     #sky=Specification(fence,x->(x[2]>dom_height && x[1]<=dom_length/2))
     wind=Specification(fence,x->((x[1]<=-dom_length/2) && (x[2]>=0 && x[2]<=dom_height)))
+    #mountain=Witch(hₘ,a)
     sys = ParticleSystem(Particle,ground+wind+domain, h)
-    mountain=Witch(hₘ,a)
     generate_particles!(sys,grid,domain,x -> Particle(x,U_max*VECX,FLUID))
     generate_particles!(sys,grid,ground,x -> Particle(x,VEC0,WALL))
     generate_particles!(sys,grid,wind,x -> Particle(x,U_max*VECX,INFLOW))
-    generate_particles!(sys,grid,mountain,x -> Particle(x,VEC0,OBSTACLE))
+    #generate_particles!(sys,grid,mountain,x -> Particle(x,VEC0,OBSTACLE))
     create_cell_list!(sys)
     apply!(sys,find_pressure!)
 	return sys
@@ -127,7 +129,7 @@ end
 =#
 
 function set_density!(p::Particle)
-    if p.x[2]>=0    
+    if p.type==FLUID || p.type==INFLOW
         p.rho=rho0*exp(-p.x[2]*g/(R_gas*T))
     else
         p.rho=rho0    
@@ -171,6 +173,7 @@ end
 #=
 ### Rayleigh damping
 =#
+
 function damping_structure(z,zₜ,zᵦ,γᵣ)
     if z >= (zₜ-zᵦ)
         return γᵣ*(sin(π/2*(1-(zₜ-zᵦ)/zᵦ)))^2
@@ -178,7 +181,7 @@ function damping_structure(z,zₜ,zᵦ,γᵣ)
         return 0
     end
 end            
-
+   
 
 #=
 ### Move and accelerate
@@ -192,7 +195,7 @@ end
 
 function accelerate!(p::Particle)
 	if p.type == FLUID 
-		p.u += 0.5*dt*(-g*VECY-damping_structure(p.x[2],zₜ,zᵦ,γᵣ)*VECY+p.Du)
+		p.u += 0.5*dt*(-damping_structure(p.x[2],zₜ,zᵦ,γᵣ)*VECY-g*VECY+p.Du)
 	end
 end
 
