@@ -96,25 +96,6 @@ end
 function boundarybox(e::Ellipse)::Box
     return Rectangle(e.x1-e.r1, e.x2-e.r2, e.x1+e.r1, e.x2+e.r2) 
 end
-"""
-    Witch(H::Float64,a::Float64) <: Shape
-
-Define a shape as the Witch of Agnesi profile with height H and width a. Work.
-"""
-struct Witch <: Shape
-    H::Float64
-    a::Float64
-    Witch(H::Float64,a::Float64)=new(H,a)
-end
-
-function is_inside(x::RealVector,w::Witch)::Bool
-    h=x1->(w.H*w.a^2)/(x1^2+w.a^2) #set the profile function
-    return x[2]<=h(x[1])
-end
-
-function boundarybox(w::Witch)::Box
-    return Rectangle(-10.0*w.a,0.0,10.0*w.a,w.H) #technically, the profile is from -∞ to +∞
-end    
 
 """
     BooleanUnion(s1::Shape, s2::Shape) <: Shape
