@@ -1,6 +1,6 @@
 #=
 
-# Flow around a mountain with the Witch of Agnesi profile:
+# Isothermal flow around a mountain with the Witch of Agnesi profile:
 
 h(x)=(hₘa²)/(x²+a²)
 
@@ -11,9 +11,11 @@ module witch
 using Printf    
 using Parameters
 using SmoothedParticles
+include("../examples/utils/atmo_packing.jl")
+using .atmo_packing
 
 const folder_name = "mtn-wvs/results/witch"
-const export_vars = (:u, :P, :rho, :type)
+const export_vars = (:u, :P, :θ, :rho, :type)
 
 #=
 Declare constants
@@ -22,23 +24,25 @@ Declare constants
 #geometry parameters
 const dom_height = 26e3   #height of the domain 
 const dom_length = 400e3  #length of the domain
-const dr = dom_height/50	    #average particle distance (decrease to make finer simulation)
-const h = 4.2*dr              
+const dr = dom_height/150	    #average particle distance (decrease to make finer simulation)
+const h = 1.8*dr              
 const bc_width = 6*dr                 
-const hₘ = 100.            #parameters for the Witch of Agnesi profile; mountain height
+const hₘ = 100           #parameters for the Witch of Agnesi profile; mountain height
 const a = 10e3           #parameters for the Witch of Agnesi profile; mountain width
 
 
 
 #physical parameters
 const U_max = 20.0       #maximum inflow velocity
-const rho0 =1.177		 #referential fluid density
-const mu = 15.98e-6		#dynamic viscosity
+const rho0 =1.393		 #referential fluid density
+const mu = 20e-6		#dynamic viscosity
 
 #meteorological parameters
-const N=0.0196
+const N=sqrt(0.0196)
 const g=9.81
-const R_gas=287.05
+const R_mass=287.05
+const R_gas=8.314
+const cp=7*R_gas/2
 const T=250
 const γᵣ=10*N
 const zᵦ=12e3
@@ -47,9 +51,9 @@ const c = sqrt(65e3*(7/5)/rho0)	 #numerical speed of sound
 
 
 #temporal parameters
-const dt = 0.1*h/c                     #time step
-const t_end = 200.0              #end of simulation, 4*3600
-const dt_frame = max(dt, t_end/200)    #how often data is saved
+const dt = 0.01*h/c                     #time step
+const t_end = 4*3600     #end of simulation, 4*3600
+const dt_frame = 4*dt #how often data is saved
 
 #particle types
 const FLUID = 0.0
@@ -69,13 +73,16 @@ mutable struct Particle <: AbstractParticle
     Drho::Float64  # density rate
     m::Float64 #mass of the particle
     P::Float64  # pressure
+    θ::Float64 #potential temperature
     type::Float64 # particle type
+    gGamma::RealVector #for the packing algorithm
     
     function Particle(x::RealVector, u::RealVector, type::Float64)
-        obj = new(x, u, VEC0,0.0,0.0,0.0, 0.0, type)  
-        obj.rho=rho0*exp(-obj.x[2]*g/(R_gas*T))
+        obj = new(x, u, VEC0,0.0,0.0,0.0,0.0,0.0,type,VEC0)  
+        obj.rho=rho0*exp(-obj.x[2]*g/(R_mass*T))
         obj.m=obj.rho*dr^2 # set the mass of the particle according to its density
-        obj.P=obj.rho*T*R_gas
+        obj.P=obj.rho*T*R_mass
+        obj.θ=T*((T*R_gas*rho0)/obj.P)^(R_gas/cp)
         return obj
     end
 end
@@ -98,13 +105,17 @@ function make_system()
     mountain=Specification(domain,x->(x[2]<=witch_profile(x[1])))
 
     sys = ParticleSystem(Particle,domain+fence, h)
-    generate_particles!(sys,grid,domain,x -> Particle(x,VEC0,FLUID))
+    generate_particles!(sys,grid,domain-mountain,x -> Particle(x,VEC0,FLUID))
     generate_particles!(sys,grid,fence,x -> Particle(x,VEC0,WALL))
     #generate_particles!(sys,grid,wind,x -> Particle(x,U_max*VECX,INFLOW))
-    #generate_particles!(sys,grid,mountain,x -> Particle(x,VEC0,MOUNTAIN))
+    generate_particles!(sys,grid,mountain,x -> Particle(x,VEC0,MOUNTAIN))
 
     create_cell_list!(sys)
-	return sys
+    improved_sys=atmo_packing.packing(sys,1e-10,1e-10,150)
+    apply!(improved_sys,set_density!)
+    apply!(improved_sys,find_pressure!)
+    apply!(improved_sys,find_pot_temp!)
+	return improved_sys
 end
 
 #=
@@ -130,7 +141,23 @@ end
 function find_pressure!(p::Particle)
     p.rho+=p.Drho*dt
 	p.Drho = 0.0
-	p.P = p.rho*R_gas*T   
+	p.P = p.rho*R_mass*T   
+end
+
+#=
+### Calculate density
+=#
+
+function set_density!(p::Particle)
+    p.rho=rho0*exp(-p.x[2]*g/(R_mass*T))
+end
+
+#=
+### Calculate potential temperature
+=#
+
+function find_pot_temp!(p::Particle)
+    p.θ=T*((T*R_gas*rho0)/p.P)^(R_gas/cp)
 end
 
 #=
@@ -166,6 +193,7 @@ end
 #=
 ### Move and accelerate
 =#
+
 function move!(p::Particle)
 	p.Du = VEC0
 	if p.type == FLUID || p.type == INFLOW
@@ -185,7 +213,6 @@ function  main()
 	out = new_pvd_file(folder_name)
     save_frame!(out, sys, export_vars...)
     nsteps = Int64(round(t_end/dt))
-
     @show T
     @show U_max
     @show rho0
@@ -202,6 +229,7 @@ function  main()
         create_cell_list!(sys)
 		apply!(sys, balance_of_mass!)
         apply!(sys, find_pressure!)
+        apply!(sys,find_pot_temp!)
         apply!(sys, internal_force!)
         apply!(sys, accelerate!)
 
