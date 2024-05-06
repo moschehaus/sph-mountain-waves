@@ -1,4 +1,4 @@
-#Implementation of the packing algorithm for the witch. jl simulationfrom the aritcle: "Particle packing algorithm for SPH schemes, doi: 10.1016/j.cpc.2012.02.032"#
+#Implementation of the packing algorithm for the witch simulations from the aritcle: "Particle packing algorithm for SPH schemes, doi: 10.1016/j.cpc.2012.02.032"#
 # 
 module atmo_packing
 
@@ -8,21 +8,21 @@ using LinearAlgebra
 
 
 #geometry parameters
-const dom_height = 26e3   #height of the domain 
-const dr = dom_height/150  #average particle distance (decrease to make finer simulation)
-const h = 1.8*dr              
+const dom_height = 26e3    #height of the domain 
+const dr = dom_height/100  #average particle distance (decrease to make finer simulation)
+const h =1.8*dr              
 
 #physical parameters
-const rho0 =1.393		 #referential fluid density
+const rho0 =1.393		    #referential fluid density
 
 #meteorological parameters
 const g=9.81
 const R_mass=287.05
 const T=250
-const c = sqrt(65e3*(7/5)/rho0)	 #numerical speed of sound
+const c = sqrt(65e3*(7/5)/rho0)	 
 
 #temporal parameters
-const dt = 0.01*h/c                #time step
+const dt = 0.1*h/c          #time step
 
 #particle types
 const FLUID = 0.0
@@ -37,28 +37,27 @@ are lesser then a stopping criterion based on abs_tol, rel_tol. If the criterion
 
 """
 function packing(system::ParticleSystem,abs_tol::Float64,rel_tol::Float64,maxSteps::Int64)
+    apply!(system,reset!) #hard reset of all velocities and accelerations
     particles=system.particles
     β,ζ,V0=get_packing_pars(system)
-    apply!(system, (p, q,r) -> find_gGamma!(p, q, r, V0))
+    apply!(system, (p, q,r) -> find_gGamma!(p, q, r, V0),self=true)
+    apply!(system, p->stabilization_force!(p,β,ζ))
     
-    init_vel=[]
     init_gGamma=[]
     for par in particles
-        u=par.u
         ∇Γ=par.gGamma
-        push!(init_vel,u)
         push!(init_gGamma,∇Γ)
     end
-    res_vel=LinearAlgebra.norm(init_vel)
+    res_vel=0.0 #velocity residuum can be initialized as zero as it has been reset
     res_gGamma=LinearAlgebra.norm(init_gGamma)
     println("-----------------PACKING ALGORITHM INITIALIZED---------------")
-    println("Initial norms of velocity and ∇Γ are $res_vel and $res_gGamma")
+    println("Initial norm of ∇Γ is $res_gGamma")
     numSteps=0
-    while (((res_vel+res_gGamma)>=stopping_criterion(abs_tol,rel_tol,init_vel,init_gGamma)) && numSteps<maxSteps)
+    while (((res_vel+res_gGamma)>=stopping_criterion(abs_tol,rel_tol,init_gGamma)) && numSteps<maxSteps)
         apply!(system, packing_accelerate!)
         apply!(system, packing_move!)
         create_cell_list!(system)
-        apply!(system, (p, q,r) -> find_gGamma!(p, q, r, V0))
+        apply!(system, (p, q,r) -> find_gGamma!(p, q, r, V0),self=true)
         apply!(system, p->stabilization_force!(p,β,ζ))
         apply!(system, packing_accelerate!)
 
@@ -76,25 +75,35 @@ function packing(system::ParticleSystem,abs_tol::Float64,rel_tol::Float64,maxSte
     end
 
     if numSteps < maxSteps
-        println("Packing successful after $numSteps iterations with velocities norm $res_vel and ∇Γ norm $res_gGamma")
+        println("Packing successful after $numSteps iterations with velocities norm $res_vel and ∇Γ norm $res_gGamma. Velocities will be set to zero now.")
     else
-        println("Packing unsuccessful, maximum number of iterations reached, velocities norm $res_vel and ∇Γ norm $res_gGamma")
+        println("Packing unsuccessful, maximum number of iterations reached, velocities norm $res_vel and ∇Γ norm $res_gGamma. Velocities will be set to zero now")
     end
     println("-----------------PACKING ALGORITHM FINISHED---------------")
-    apply!(system,reset!)
+    apply!(system,reset!) #hard reset of all velocities and accelerations
     return system
 end
 
+#=
+Calculate the stabilization force. It consists of a viscous term and a gradient of "uneveness" of distr. of particles
+=#
 
 @inbounds function stabilization_force!(p::AbstractParticle,β::Float64,ζ::Float64)
     p.Du=-β * p.gGamma- ζ * p.u
-    p.gGamma=VEC0
 end
+
+#=
+Calculate the graident of gamma, a measure of "uneveness" od particle distribution
+=#
 
 @inbounds function find_gGamma!(p::AbstractParticle, q::AbstractParticle,r::Float64,V0::Float64)
     x_pq=p.x-q.x
     p.gGamma += V0*rDwendland2(h,r)*x_pq    
 end
+
+#=
+Get the parameters for the stabilization force: average density, volume and pressure
+=#
 
 function get_packing_pars(system::ParticleSystem)
     
@@ -120,29 +129,39 @@ function get_packing_pars(system::ParticleSystem)
     return β, ζ, V0
 end
 
+#=
+Move and accelerate
+=#
+
 function packing_accelerate!(p::AbstractParticle)
     if p.type==FLUID
 	    p.u += 0.5*dt*p.Du
-    else
-        p.u=VEC0
     end
 end
 
 function packing_move!(p::AbstractParticle)
 	p.Du = VEC0
+    p.gGamma=VEC0
 	if p.type == FLUID
 		p.x += dt*p.u
 	end
 
 end
+#=
+Hard reset of velocities and accelerations, makes sure the initial state is properly set.
+=#
 
 function reset!(p::AbstractParticle)
     p.Du=VEC0
     p.u=VEC0
 end
 
-function stopping_criterion(abs_tol::Float64,rel_tol::Float64,init_vel::Vector{Any},init_gGamma::Vector{Any})
-    return 2*abs_tol+rel_tol*(LinearAlgebra.norm(init_gGamma)+LinearAlgebra.norm(init_vel))
+#= 
+Simple stopping criterion, combining absolute and relative tolerance
+=#
+
+function stopping_criterion(abs_tol::Float64,rel_tol::Float64,init_gGamma::Vector{Any})
+    return 2*abs_tol+rel_tol*(LinearAlgebra.norm(init_gGamma))
 end
 
 end

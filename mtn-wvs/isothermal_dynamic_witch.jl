@@ -24,10 +24,10 @@ Declare constants
 #geometry parameters
 const dom_height = 26e3   #height of the domain 
 const dom_length = 400e3  #length of the domain
-const dr = dom_height/50 #average particle distance (decrease to make finer simulation)
+const dr = dom_height/100 #average particle distance (decrease to make finer simulation)
 const h = 1.8*dr          #smoothing length    
 const bc_width = 6*dr     #boundary width
-const hₘ = 100            #parameters for the Witch of Agnesi profile; mountain height
+const hₘ = 1000            #parameters for the Witch of Agnesi profile; mountain height
 const a = 10e3            #parameters for the Witch of Agnesi profile; mountain width
 
 #physical parameters
@@ -112,6 +112,7 @@ function make_system()
 
     improved_sys=atmo_packing.packing(unpacked_sys,1e-10,1e-10,150)
     filter!(p->(p.type != OUTFLOW),improved_sys.particles) #removes particles at the outflow region
+    create_cell_list!(improved_sys)
     apply!(improved_sys,initialize_system!)                #asserts correct initial velocities for the particles
     apply!(improved_sys,set_density!)                      #sets ρ,p,θ according to the positions after packing
     apply!(improved_sys,find_pressure!)
@@ -213,6 +214,26 @@ function accelerate!(p::Particle)
 	end
 end
 
+#=
+### Modified Verlet scheme
+=#
+
+function verlet_step!(sys::ParticleSystem)
+    apply!(sys, accelerate!)
+    apply!(sys, move!)
+    add_new_particles!(sys)
+    create_cell_list!(sys)
+
+    apply!(sys, balance_of_mass!)
+    apply!(sys, find_pressure!)
+    apply!(sys,find_pot_temp!)
+    apply!(sys, internal_force!)
+    apply!(sys, accelerate!)
+end
+
+#=
+### Put everything in a time loop
+=#
 
 function  main()
     sys = make_system()
@@ -228,16 +249,7 @@ function  main()
     #a modified Verlet scheme
 	for k = 1 : nsteps 
         t = k*dt
-        apply!(sys, accelerate!)
-        apply!(sys, move!)
-        add_new_particles!(sys)
-        create_cell_list!(sys)
-		apply!(sys, balance_of_mass!)
-        apply!(sys, find_pressure!)
-        apply!(sys,find_pot_temp!)
-        apply!(sys, internal_force!)
-        apply!(sys, accelerate!)
-
+        verlet_step!(sys)
         #save data at selected 
         if (k %  Int64(round(dt_frame/dt)) == 0)
             @show t

@@ -16,9 +16,9 @@ using Parameters
 using Plots
 using DataFrames # to store the csv file
 using CSV# to store the csv file
-include("utils/FixPA.jl")
-include("utils/entropy.jl")
-include("utils/ICR.jl")
+include("../examples/utils/FixPA.jl")
+include("../examples/utils/entropy.jl")
+include("../examples/utils/ICR.jl")
 using .FixPA
 using .entropy
 using LaTeXStrings #for better legends

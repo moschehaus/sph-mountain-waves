@@ -15,7 +15,7 @@ include("../examples/utils/atmo_packing.jl")
 using .atmo_packing
 
 const folder_name = "mtn-wvs/results/isothermal_static_witch"
-const export_vars = (:u, :P, :θ, :rho, :type)
+const export_vars = (:u, :rho, :P, :θ, :type)
 
 #=
 Declare constants
@@ -24,7 +24,7 @@ Declare constants
 #geometry parameters
 const dom_height = 26e3   #height of the domain 
 const dom_length = 400e3  #length of the domain
-const dr = dom_height/50 #average particle distance (decrease to make finer simulation)
+const dr = dom_height/100 #average particle distance (decrease to make finer simulation)
 const h = 1.8*dr          #smoothing length    
 const bc_width = 6*dr     #boundary width
 const hₘ = 100            #parameters for the Witch of Agnesi profile; mountain height
@@ -32,7 +32,7 @@ const a = 10e3            #parameters for the Witch of Agnesi profile; mountain 
 
 #physical parameters
 const rho0 =1.393		 #referential fluid density
-const mu = 15.98e-6		 #dynamic viscosity
+const mu =15.98e-3 #15.98e-6		 #dynamic viscosity
 const c = sqrt(65e3*(7/5)/rho0)	 #speed of sound
 
 #meteorological parameters
@@ -62,22 +62,22 @@ Declare variables to be stored in a Particle
 
 mutable struct Particle <: AbstractParticle
     x::RealVector  #position
+    m::Float64     #mass
     u::RealVector  #velocity
     Du::RealVector #acceleration
     rho::Float64   #density
     Drho::Float64  #density rate
-    m::Float64     #mass
     P::Float64     #pressure
     θ::Float64     #potential temperature
-    type::Float64  #particle type
     gGamma::RealVector #for the packing algorithm, "uneveness" of particle distribution
-    
+    type::Float64  #particle type
+
     function Particle(x::RealVector, u::RealVector, type::Float64)
-        obj = new(x, u, VEC0,0.0,0.0,0.0,0.0,0.0,type,VEC0)  
+        obj = new(x,0.0,u,VEC0,0.0,0.0,0.0,0.0,VEC0,type)  
         obj.rho=rho0*exp(-obj.x[2]*g/(R_mass*T))
         obj.m=obj.rho*dr^2 # set the mass of the particle according to its density
         obj.P=obj.rho*T*R_mass
-        obj.θ=T*((T*R_gas*rho0)/obj.P)^(R_gas/cp)
+        obj.θ=T*((T*R_mass*rho0)/obj.P)^(R_gas/cp)
         return obj
     end
 end
@@ -100,7 +100,7 @@ function make_system()
     generate_particles!(sys,grid,mountain,x -> Particle(x,VEC0,MOUNTAIN))
 
     create_cell_list!(sys)
-    improved_sys=atmo_packing.packing(sys,1e-10,1e-10,150) #packing algorithm
+    improved_sys=atmo_packing.packing(sys,1e-10,1e-10,100) #packing algorithm
     apply!(improved_sys,set_density!)
     apply!(improved_sys,find_pressure!)
     apply!(improved_sys,find_pot_temp!)
@@ -140,7 +140,7 @@ end
 
 
 function find_pot_temp!(p::Particle)
-    p.θ=T*((T*R_gas*rho0)/p.P)^(R_gas/cp)
+    p.θ=T*((T*R_mass*rho0)/p.P)^(R_gas/cp)
 end
 
 #=
@@ -161,7 +161,7 @@ end
 
 function move!(p::Particle)
 	p.Du = VEC0
-	if p.type == FLUID || p.type == INFLOW
+	if p.type == FLUID 
 		p.x += dt*p.u
 	end
 end
@@ -173,7 +173,22 @@ function accelerate!(p::Particle)
 end
 
 #=
-### Main function
+### Modified Verlet scheme
+=#
+
+function verlet_step!(sys::ParticleSystem)
+    apply!(sys, accelerate!)
+    apply!(sys, move!)
+    create_cell_list!(sys)
+	apply!(sys, balance_of_mass!)
+    apply!(sys, find_pressure!)
+    apply!(sys,find_pot_temp!)
+    apply!(sys, internal_force!)
+    apply!(sys, accelerate!)
+end
+
+#=
+### Put everything in a time loop
 =#
 
 function  main()
@@ -182,7 +197,6 @@ function  main()
     save_frame!(out, sys, export_vars...)
     nsteps = Int64(round(t_end/dt))
     @show T
-    @show U_max
     @show rho0
     @show mu
     @show c
@@ -190,15 +204,7 @@ function  main()
     #a modified Verlet scheme
 	for k = 1 : nsteps 
         t = k*dt
-        apply!(sys, accelerate!)
-        apply!(sys, move!)
-        create_cell_list!(sys)
-		apply!(sys, balance_of_mass!)
-        apply!(sys, find_pressure!)
-        apply!(sys,find_pot_temp!)
-        apply!(sys, internal_force!)
-        apply!(sys, accelerate!)
-
+        verlet_step!(sys)
         #save data at selected 
         if (k %  Int64(round(dt_frame/dt)) == 0)
             @show t
