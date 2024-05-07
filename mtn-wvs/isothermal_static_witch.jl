@@ -24,7 +24,7 @@ Declare constants
 #geometry parameters
 const dom_height = 26e3   #height of the domain 
 const dom_length = 400e3  #length of the domain
-const dr = dom_height/100 #average particle distance (decrease to make finer simulation)
+const dr = dom_height/50 #average particle distance (decrease to make finer simulation)
 const h = 1.8*dr          #smoothing length    
 const bc_width = 6*dr     #boundary width
 const hₘ = 100            #parameters for the Witch of Agnesi profile; mountain height
@@ -75,7 +75,7 @@ mutable struct Particle <: AbstractParticle
     function Particle(x::RealVector, u::RealVector, type::Float64)
         obj = new(x,0.0,u,VEC0,0.0,0.0,0.0,0.0,VEC0,type)  
         obj.rho=rho0*exp(-obj.x[2]*g/(R_mass*T))
-        obj.m=obj.rho*dr^2 # set the mass of the particle according to its density
+        obj.m=obj.rho*dr*dr # set the mass of the particle according to its density
         obj.P=obj.rho*T*R_mass
         obj.θ=T*((T*R_mass*rho0)/obj.P)^(R_gas/cp)
         return obj
