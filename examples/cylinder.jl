@@ -32,8 +32,8 @@ const chan_w = 0.41          #width of the channel
 const cyl1 = 0.2             #x coordinate of the cylinder
 const cyl2 = 0.005           #y coordinate of the cylinder
 const cyl_r = 0.05           #radius of the cylinder
-const dr = pi*cyl_r/20 		 #average particle distance (decrease to make finer simulation)
-const h = 2.4*dr
+const dr = pi*cyl_r/40 		 #average particle distance (decrease to make finer simulation)
+const h0 = 2.4*dr
 const bc_width = 6*dr
 const x2_min = -chan_w/2 - 6*dr
 const x2_max =  chan_w/2 + 6*dr
@@ -45,12 +45,12 @@ const rho0 = 1.0		#referential fluid density
 const m0 = rho0*dr^2	#particle mass
 const c = 20.0*U_max	#numerical speed of sound
 const mu = 1.0e-3		#dynamic viscosity
-const nu = 0.1*h*c      #pressure stabilization
+const nu = 0.1*h0*c      #pressure stabilization
 
 
 #temporal parameters
-const dt = 0.1*h/c                     #time step
-const t_end = 10.0                     #end of simulation
+const dt = 0.1*h0/c                     #time step
+const t_end = 40.0                     #end of simulation
 const dt_frame = max(dt, t_end/200)    #how often data is saved
 const t_acc = 1.0                      #time to accelerate to full speed
 const t_measure = t_end/2              #time from which we start measuring drag and lift
@@ -66,22 +66,24 @@ Declare variables to be stored in a Particle
 =#
 
 mutable struct Particle <: AbstractParticle
-    x::RealVector #position
-    v::RealVector #velocity
-    a::RealVector #acceleration
-    rho::Float64 #density
-    Drho::Float64 #rate of density
-    P::Float64 #pressure
-    m::Float64 #mass
-    type::Float64 #particle type
-    Particle(x, type=FLUID) = begin
-        return new(x, VEC0, VEC0,  rho0, 0., 0., m0, type)
-    end
+	x::RealVector #position
+	v::RealVector #velocity
+	a::RealVector #acceleration
+	rho::Float64 #density
+	Drho::Float64 #rate of density
+	h::Float64
+	Dh::Float64
+	P::Float64 #pressure
+	m::Float64 #mass
+	type::Float64 #particle type
+	Particle(x, type=FLUID) = begin
+		return new(x, VEC0, VEC0,  rho0, 0.,h0,0., 0., m0, type)
+	end
 end
 
 function make_system()
     domain = Rectangle(-bc_width, x2_min, chan_l, x2_max)
-    sys = ParticleSystem(Particle, domain, h)
+    sys = ParticleSystem(Particle, domain, h0)
     import_particles!(sys, "init/cylinder.vtp", x -> Particle(x))
     return sys
 end
@@ -100,26 +102,29 @@ end
 
 
 @inbounds function balance_of_mass!(p::Particle, q::Particle, r::Float64)
-	ker = q.m*rDwendland2(h,r)
+	ker = q.m*rDwendland2(p.h,r)
 	p.Drho += ker*(dot(p.x-q.x, p.v-q.v))
-    if p.type == FLUID && q.type == FLUID
-        p.Drho += 2*nu/p.rho*(p.rho - q.rho)
-    end
+	if p.type == FLUID && q.type == FLUID
+		p.Drho += 2*nu/p.rho*(p.rho - q.rho)
+	end
+	#p.Dh+=-0.5*(p.h/p.rho)*p.Drho
 end
 
 function find_pressure!(p::Particle)
-    if p.x[1] >= -bc_width + h
-	     p.rho += p.Drho*dt
+    if p.x[1] >= -bc_width + h0
+		p.rho += p.Drho*dt
+		#p.h+=p.Dh*dt
     end
 	p.Drho = 0.0
+	#p.Dh=0.0
 	p.P = c^2*(p.rho - rho0)
 end
 
 @inbounds function internal_force!(p::Particle, q::Particle, r::Float64)
-	ker = q.m*rDwendland2(h,r)
+	ker = q.m*rDwendland2(p.h,r)
     x_pq = p.x - q.x
 	p.a += -ker*(p.P/p.rho^2 + q.P/q.rho^2)*x_pq
-    p.a += 8.0*ker*mu/(p.rho*q.rho)*dot(p.v - q.v, x_pq)/(r*r + 0.01*h*h)*x_pq
+    p.a += 8.0*ker*mu/(p.rho*q.rho)*dot(p.v - q.v, x_pq)/(r*r + 0.01*p.h*p.h)*x_pq
 end
 
 function move!(p::Particle)
@@ -166,7 +171,7 @@ end
 function  main()
     sys = make_system()
 	out = new_pvd_file(folder_name)
-    save_frame!(out, sys, :v, :P, :rho, :type)
+    save_frame!(out, sys, :v, :P, :rho, :type, :h)
     C_SPH = VEC0
     C_ref = RealVector(5.57953523384, 0.010618948146, 0.)
     nsteps = Int64(round(t_end/dt))
