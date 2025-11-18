@@ -8,8 +8,8 @@ using LinearAlgebra
 
 
 #geometry parameters
-const dom_height = 26e3    #height of the domain 
-const dr = dom_height/100  #average particle distance (decrease to make finer simulation)
+const dom_height = 26.0    #height of the domain 
+const dr = dom_height/25 #average particle distance (decrease to make finer simulation)
 const h =1.8*dr              
 
 #physical parameters
@@ -22,7 +22,7 @@ const T=250
 const c = sqrt(65e3*(7/5)/rho0)	 
 
 #temporal parameters
-const dt = 0.1*h/c          #time step
+const dt = 0.01*h/c          #time step
 
 #particle types
 const FLUID = 0.0
