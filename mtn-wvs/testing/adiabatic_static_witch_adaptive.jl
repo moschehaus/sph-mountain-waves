@@ -55,7 +55,7 @@ const T0 = 250 #initial temperature
 
 #temporal parameters
 const dt = 0.01 * h0 / c   #time step
-const t_end = 20.0 #end of simulation
+const t_end = 5.0 #end of simulation
 const dt_frame = t_end / 100 #how often data is saved
 
 #particle types
@@ -187,7 +187,7 @@ end
 
 @inbounds function update_density!(p::Particle)
         if p.type == FLUID
-                p.rho += dt * p.rho
+                p.rho += dt * p.Drho
         end
         p.Drho = 0.0
 end
@@ -222,7 +222,6 @@ Move and accelerate
 """
 
 function move!(p::Particle)
-        p.Du = VEC0
         if p.type == FLUID
                 p.x += dt * p.u
                 #p.rho = 0.0     #we want to reset the density only for the fluid, so we call it here
@@ -233,6 +232,7 @@ function accelerate!(p::Particle)
         if p.type == FLUID
                 p.u += 0.5 * dt * (p.Du - g * VECY - damping_structure(p.x[2], zₜ, zᵦ, γᵣ) * VECY)
         end
+        p.Du = VEC0
 end
 
 """
