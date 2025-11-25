@@ -5,16 +5,17 @@
 
  all thermodynamic processes are adiabatic
 """
-module AdiabaticStaticWitch
+module PerturbedStaticWitch
 export main
 
 using Printf
 using SmoothedParticles
 using DataFrames
 using Plots
+unicodeplots()
 
-const folder_name = "../results/adiabatic_static_witch"
-const export_vars = (:v, :rho, :P, :θ, :T, :type)
+const folder_name = "../results/full_hopkins_perturbed_witch"
+const export_vars = (:v, :ρ, :P, :θ, :T, :type)
 
 # ==============
 # Constants
@@ -34,9 +35,9 @@ const h0 = η * dr            # smoothing length
 
 
 # physical parameters
-const rho0 = 1.393             # reference density
-const m0 = rho0 * dr * dr
-const c = sqrt(65e3 * (7 / 5) / rho0) # speed of sound
+const ρ0 = 1.393             # reference density
+const m0 = ρ0 * dr * dr
+const c = sqrt(65e3 * (7 / 5) / ρ0) # speed of sound
 
 # artifical parameters
 const ν = 0.1 * h0 * c        # pressure stabilization
@@ -57,11 +58,11 @@ const R_gas = 8.314            # universal gas constant
 const cp = 7 * R_mass / 2
 const cv = cp - R_mass
 const γ = cp / cv              # Poisson constant
-const T0 = 250.0               # initial temperature
+const T_bg = 250.0               # background (ie. initial) temperature
 
 # temporal parameters
 const dt = 0.01 * h0 / c       # time step
-const t_end = 10.0              # end of simulation
+const t_end = 2.0              # end of simulation
 const dt_frame = t_end / 100   # frame interval
 
 # particle types
@@ -85,40 +86,67 @@ mutable struct Particle <: AbstractParticle
         m::Float64        # mass
         v::RealVector     # velocity
         Dv::RealVector    # acceleration
-	ρ̄
-	ρ′
-        rho::Float64      # density
-        P::Float64        # kernel-averaged pressure (for output)
-	P̄
-	P′
-        θ::Float64        # potential temperature
-        T::Float64        # temperature
-	T̄
-	T′
-        gGamma::RealVector
+        ρ_bg::Float64     # background density
+        ρ′::Float64       # density perturbation
+        ρ::Float64        # total density
+        P_bg::Float64     # background pressure
+        P′::Float64       # pressure perturbation
+        P::Float64        # total pressure
+        θ_bg::Float64     # bakcground potential temperature
+        θ′::Float64       # potential temperature perturbation
+        θ::Float64        # total potential temperature
+        T_bg::Float64     # background temperature
+        T′::Float64       # temperature perturbation
+        T::Float64        # total temperature
         type::Float64     # particle type
-        A::Float64        # Hopkins entropy variable
-	
+        A::Float64        # entropy-like variable
+        A_bg::Float64        # entropy-like variable
+
         function Particle(x::RealVector, v::RealVector, type::Float64)
                 obj = new(
-                        h0,                # h, 
-                        x, 0.0,            # x, m
-                        v, VEC0,           # u, Dv
-                        0.0,               # rho
-                        0.0, 0.0,          # P, θ, 
-                        0.0,               # T
-                        VEC0,              # gGamma
-                        type,              # type
-                        0.0,               # A
+                        h0,             # h 
+                        x,              # x 	 	
+                        0.0,            # m
+                        v,              # v
+                        VEC0,           # Dv
+                        0.0,            # ρ_bg
+                        0.0,            # ρ′
+                        0.0,            # ρ
+                        0.0,            # P_bg
+                        0.0,            # P′
+                        0.0,            # P
+                        0.0,            # θ_bg 
+                        0.0,            # θ′ 
+                        0.0,            # θ 
+                        0.0,            # T_bg
+                        0.0,            # T′
+                        0.0,            # T
+                        type,           # type
+                        0.0,            # A
                 )
 
                 # initial hydrostatic isothermal state 
-                obj.T = T0
-                obj.rho = rho0 * exp(-obj.x[2] * g / (R_mass * obj.T))
-                obj.m = obj.rho * dr * dr#m0
-                obj.P = R_mass * obj.T * obj.rho
-                obj.θ = obj.T * (((T0 * R_gas * rho0) / obj.P)^(2))^(1 / 7)
-                obj.A = obj.P / obj.rho^γ
+
+
+                obj.T_bg = T_bg
+                obj.ρ_bg = background_density(obj.x[2])
+                obj.P_bg = background_pressure(obj.x[2])
+                obj.θ_bg = background_pot_temperature(obj.x[2])
+                obj.A_bg = background_entropy(obj.x[2])
+
+                obj.ρ′ = 0.0
+                obj.P′ = 0.0
+                obj.T′ = 0.0
+                obj.θ′ = 0.0
+
+                obj.T = obj.T′ + T_bg
+                obj.ρ = obj.ρ′ + obj.ρ_bg
+                obj.P = obj.P′ + obj.P_bg
+                obj.θ = obj.θ′ + obj.θ_bg
+
+                obj.m = obj.ρ * dr^2
+                obj.A = obj.P / obj.ρ^γ
+
                 return obj
         end
 end
@@ -142,31 +170,54 @@ function make_system()
         generate_particles!(sys, grid, mountain, x -> Particle(x, VEC0, FLUID))
 
         create_cell_list!(sys)
-        packing!(sys)
-        create_cell_list!(sys)
+        #packing!(sys)
+        #create_cell_list!(sys)
         return sys
 end
 
-# ==============
-# Thermodynamics helper: A and P
-# ==============
+"""
+Background (ie. initial) density, pressure and potential temperature distribution
+"""
 
-@inbounds function reset_pressure_bar!(p::Particle)
-        if p.type == FLUID
-                p.P = 0.0
-        end
-end
-@inbounds function compute_pressure_bar!(p::Particle, q::Particle, r::Float64)
-        if p.type == FLUID
-                ker = wendland2(0.5 * (p.h + q.h), r)
-                p.P += q.m * q.A^(1 / γ) * ker
-        end
+
+function background_density(y::Float64)
+        return ρ0 * exp(-y * g / (R_mass * T_bg))
 end
 
-@inbounds function finalize_pressure_bar!(p::Particle)
-        if p.type == FLUID
-                p.P = p.P^γ
-        end
+function background_pressure(y::Float64)
+        ρ_bg = background_density(y)
+        return R_mass * T_bg * ρ_bg
+end
+
+function background_pot_temperature(y::Float64)
+        P_bg = background_pressure(y)
+        return T_bg * (((T_bg * R_gas * ρ0) / P_bg))^(2 / 7)
+end
+
+function background_entropy(y::Float64)
+        P_bg = background_pressure(y)
+        ρ_bg = background_density(y)
+        return P_bg / ρ_bg^γ
+end
+
+# ==============
+# Pressure computation
+# ==============
+
+@inbounds function reset_pressure!(p::Particle)
+        p.P = 0.0
+        p.P′ = 0.0 #this should not be necessary; robustness precaution
+end
+
+@inbounds function compute_pressure!(p::Particle, q::Particle, r::Float64)
+        ker = wendland2(0.5 * (p.h + q.h), r)
+        p.P += q.m * q.A^(1 / γ) * ker
+end
+
+@inbounds function finalize_pressure!(p::Particle)
+        p.P = p.P^γ
+        p.P_bg = background_pressure(p.x[2])
+        p.P′ = p.P - p.P_bg
 end
 
 # ==============
@@ -174,38 +225,38 @@ end
 # ==============
 
 @inbounds function find_temperature!(p::Particle)
-        if p.type == FLUID
-                p.T = p.P / (R_mass * p.rho)
-        end
+        p.T = p.P / (R_mass * p.ρ)
+        p.T′ = p.T - p.T_bg
 end
 
 @inbounds function find_pot_temp!(p::Particle)
-        if p.type == FLUID
-                p.θ = p.T * (((T0 * R_gas * rho0) / p.P)^(2))^(1 / 7)
-        end
+        p.θ = p.T * (((T_bg * R_gas * ρ0) / p.P))^(2 / 7)
+        p.θ_bg = background_pot_temperature(p.x[2])
+        p.θ′ = p.θ - p.θ_bg
 end
 
 # ==============
 # Smoothing-length & density evolution
 # ==============
 
-@inbounds function compute_density!(p::Particle, q::Particle, r::Float64)
-        if p.type == FLUID
-                p.rho += q.m * wendland2(p.h, r)
-        end
+@inbounds function reset_density!(p::Particle)
+        p.ρ = 0.0
+        p.ρ′ = 0.0 # this should not be necessary; robustness precaution
 end
 
-@inbounds function reset_density!(p::Particle)
-        if p.type == FLUID
-                p.rho = 0.0
-        end
+
+@inbounds function compute_density!(p::Particle, q::Particle, r::Float64)
+        p.ρ += q.m * wendland2(p.h, r)
+end
+
+@inbounds function finalize_density!(p::Particle)
+        p.ρ_bg = background_density(p.x[2])
+        p.ρ′ = p.ρ - p.ρ_bg
 end
 
 @inbounds function update_smoothing!(p::Particle)
-        if p.type == FLUID
-                rho = max(p.rho, rho_floor)
-                p.h = η * sqrt(p.m / rho)
-        end
+        rho = max(p.ρ, rho_floor)
+        p.h = η * sqrt(p.m / rho)
 end
 
 
@@ -214,10 +265,17 @@ end
 # ==============
 
 function damping_structure(z, zₜ, zᵦ, γᵣ)
-        # currently disabled
-        return 0.0
+        if z >= (zₜ - zᵦ)
+                return -γᵣ * (sin(π / 2 * (1 - (zₜ - zᵦ) / zᵦ)))^2 * VECY
+        else
+                return VEC0
+        end
 end
 
+function buyoancy_force(p::Particle)
+        return -g * VECY * p.ρ′ / p.ρ # the (density) of gravity is - g * VECY
+
+end
 # ==============
 # P–A momentum equation 
 # ==============
@@ -227,31 +285,42 @@ end
         v_pq = p.v - q.v
         dot_product = SmoothedParticles.dot(x_pq, v_pq)
 
-        if p.type == FLUID
-                prefac = q.m * (p.A * q.A)^(1 / γ)
-                expfac = 1.0 - 2.0 / γ
-                ker_i = rDwendland2(p.h, r)
-                ker_j = rDwendland2(q.h, r)
+        prefac = q.m * (p.A * q.A)^(1 / γ)
+        expfac = 1.0 - 2.0 / γ
+        ker_i = rDwendland2(p.h, r)
+        ker_j = rDwendland2(q.h, r)
+        pP = max(P_floor, p.P)
+        qP = max(P_floor, q.P)
 
-                # pairwise conservative force
-                pP = max(p.P, P_floor)
-                qP = max(q.P, P_floor)
-                p.Dv += -prefac * (pP^expfac * ker_i + qP^expfac * ker_j) * x_pq
-                if dot_product < 0.0
-                        h_ij = 0.5 * (p.h + q.h)
-                        ker_ij = rDwendland2(h_ij, r)
-                        prho = max(p.rho, rho_floor)
-                        qrho = max(q.rho, rho_floor)
-                        c_i = sqrt(γ * p.P / prho)
-                        c_j = sqrt(γ * q.P / qrho)
-                        c_ij = 0.5 * (c_i + c_j)
-                        ρ_ij = 0.5 * (prho + qrho)
-                        μ_ij = (h_ij * dot_product) / (r * r + ε * h_ij * h_ij)
-                        π_ij = (-α * c_ij * μ_ij + β * μ_ij * μ_ij) / ρ_ij
+        # acceleration due the gradient of total pressure
+        a_tot = -prefac * (pP^expfac * ker_i + qP^expfac * ker_j) * x_pq
 
-                        # artificial viscous force
-                        p.Dv += -q.m * π_ij * ker_ij * x_pq
-                end
+        prefac_bg = q.m * (p.A_bg * q.A_bg)^(1 / γ)
+        pP_bg = max(P_floor, p.P_bg)
+        qP_bg = max(P_floor, q.P_bg)
+
+        # acceleration due to the gradient of background pressure
+        a_bg = -prefac_bg * (pP_bg^expfac * ker_i + qP_bg^expfac * ker_j) * x_pq
+
+        # total acceleration
+        p.Dv += a_tot - a_bg
+
+
+        # artificial viscous force
+        if dot_product < 0.0
+                h_ij = 0.5 * (p.h + q.h)
+                ker_ij = rDwendland2(h_ij, r)
+                prho = max(p.ρ, rho_floor)
+                qrho = max(q.ρ, rho_floor)
+                c_i = sqrt(γ * p.P / prho)
+                c_j = sqrt(γ * q.P / qrho)
+                c_ij = 0.5 * (c_i + c_j)
+                ρ_ij = 0.5 * (prho + qrho)
+                μ_ij = (h_ij * dot_product) / (r * r + ε * h_ij * h_ij)
+                π_ij = (-α * c_ij * μ_ij + β * μ_ij * μ_ij) / ρ_ij
+
+                # artificial viscous force
+                p.Dv += -q.m * π_ij * ker_ij * x_pq
         end
 end
 
@@ -267,7 +336,7 @@ end
 
 function accelerate!(p::Particle)
         if p.type == FLUID
-                p.v += 0.5 * dt * (p.Dv - g * VECY - damping_structure(p.x[2], zₜ, zᵦ, γᵣ) * VECY)
+                p.v += 0.5 * dt * (p.Dv + buyoancy_force(p) + damping_structure(p.x[2], zₜ, zᵦ, γᵣ)) # this is a vector sum
         end
         p.Dv = VEC0
 end
@@ -285,13 +354,14 @@ function verlet_step!(sys::ParticleSystem{Particle})
         # compute density and smoothing length
         apply!(sys, reset_density!)
         apply!(sys, compute_density!)
+        apply!(sys, finalize_density!)
         apply!(sys, update_smoothing!)
         create_cell_list!(sys)
 
         # pressure–entropy: build P̄ from A
-        apply!(sys, reset_pressure_bar!)
-        apply!(sys, compute_pressure_bar!)
-        apply!(sys, finalize_pressure_bar!)
+        apply!(sys, reset_pressure!)
+        apply!(sys, compute_pressure!)
+        apply!(sys, finalize_pressure!)
 
         # thermodynamics from P̄ and ρ
         apply!(sys, find_temperature!)
@@ -333,8 +403,8 @@ function main()
         average_velocities = DataFrame(t=Float64[], u=Float64[])
         maximum_velocities = DataFrame(t=Float64[], u=Float64[])
 
-        @show T0
-        @show rho0
+        @show T_bg
+        @show ρ0
         @show c
         println("---------------------------")
 
@@ -373,6 +443,7 @@ function main()
                 lc=:orange,
         )
         plot(p1, p2; layout=(2, 1))
+        #savefig("$folder_name/velocities.pdf")
 end
 
 end # module

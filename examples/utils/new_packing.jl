@@ -4,19 +4,19 @@ const ζ_pack = 1.0 * c / dt_pack   # for example; tune this
 
 @inbounds function reset_rho_pack!(p::AbstractParticle)
         if p.type == FLUID
-                p.rho = 0.0
+                p.ρ = 0.0
         end
 end
 
 @inbounds function accumulate_rho_pack!(p::AbstractParticle, q::AbstractParticle, r::Float64)
         if p.type == FLUID
-                p.rho += q.m * wendland2(p.h, r)
+                p.ρ += q.m * wendland2(p.h, r)
         end
 end
 
 # target hydrostatic density profile 
 @inline function rho_target(z::Float64)
-        return rho0 * exp(-z * g / (R_mass * T0))
+        return ρ0 * exp(-z * g / (R_mass * T_bg))
 end
 
 # ----- packing "pressure" -----
@@ -24,8 +24,8 @@ end
         if p.type == FLUID && q.type == FLUID
                 x_pq = p.x - q.x
 
-                ρi = max(p.rho, rho_floor)
-                ρj = max(q.rho, rho_floor)
+                ρi = max(p.ρ, rho_floor)
+                ρj = max(q.ρ, rho_floor)
 
                 ρti = rho_target(p.x[2])
                 ρtj = rho_target(q.x[2])
@@ -67,7 +67,7 @@ end
 function packing!(sys::ParticleSystem;
         abs_tol=1e-3,
         rel_tol=1e-2,
-        maxSteps=2*500)
+        maxSteps=500)
 
         # reset velocities
         for p in sys.particles
@@ -84,7 +84,7 @@ function packing!(sys::ParticleSystem;
         for p in sys.particles
                 if p.type == FLUID
                         ρt = rho_target(p.x[2])
-                        ρ_err0 += (p.rho - ρt)^2
+                        ρ_err0 += (p.ρ - ρt)^2
                 end
         end
         ρ_err0 = sqrt(ρ_err0)
@@ -114,7 +114,7 @@ function packing!(sys::ParticleSystem;
                         for p in sys.particles
                                 if p.type == FLUID
                                         ρt = rho_target(p.x[2])
-                                        ρ_err += (p.rho - ρt)^2
+                                        ρ_err += (p.ρ - ρt)^2
                                         v_norm2 += dot(p.v, p.v)
                                 end
                         end
