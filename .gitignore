@@ -29,6 +29,11 @@ examples/results
 tests/area_tests
 tests/volume_tests
 mtn-wvs/results
+results/*
+
+*.pvd
+*.vtk
+*.vtp
 
 #experiments
 experiments

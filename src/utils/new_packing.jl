@@ -19,7 +19,7 @@ end
         return ρ0 * exp(-z * g / (R_mass * T_bg))
 end
 
-# ----- packing "pressure" -----
+# ----- packing forcing -----
 @inbounds function balance_of_momentum_pack!(p::AbstractParticle, q::AbstractParticle, r::Float64)
         if p.type == FLUID && q.type == FLUID
                 x_pq = p.x - q.x
@@ -30,16 +30,14 @@ end
                 ρti = rho_target(p.x[2])
                 ρtj = rho_target(q.x[2])
 
-                # "packing pressure" = c_pack^2 (rho - rho_target)
                 Pi = c_pack^2 * (ρi - ρti)
                 Pj = c_pack^2 * (ρj - ρtj)
 
                 ker = rDwendland2(0.5 * (p.h + q.h), r)
 
-                # SPH momentum: Dv = - sum m_j (...) ∇W
                 f = -q.m * (Pi / ρi^2 + Pj / ρj^2) * ker * x_pq
 
-                # *** move only in vertical (z) direction for packing ***
+                # *** move only in vertical (y) direction  ***
 
                 p.Dv += f[2] * VECY
         end
@@ -49,7 +47,6 @@ end
 # strong damping
 @inbounds function packing_accelerate!(p::AbstractParticle)
         if p.type == FLUID
-                # Semi-implicit damping: v_new = (v_old + dt F) / (1 + ζ dt)
                 v_old = p.v
                 F = p.Dv
                 p.v = (v_old + dt_pack * F) / (1.0 + ζ_pack * dt_pack)
@@ -90,7 +87,7 @@ function packing!(sys::ParticleSystem;
         ρ_err0 = sqrt(ρ_err0)
 
         println("---- PACKING INIT ----")
-        println("Initial density L2 error = $ρ_err0")
+        println("Initial density error = $ρ_err0")
 
         k = 0
         while k < maxSteps
@@ -107,7 +104,7 @@ function packing!(sys::ParticleSystem;
                 apply!(sys, balance_of_momentum_pack!)
                 apply!(sys, packing_accelerate!)
 
-                # diagnostics every N steps
+                # show diagnostics every N steps
                 if k % 10 == 0
                         ρ_err = 0.0
                         v_norm2 = 0.0
@@ -132,7 +129,7 @@ function packing!(sys::ParticleSystem;
                 k += 1
         end
 
-        # zero velocities after packing
+        # set velocities to zero after packing
         for p in sys.particles
                 p.v = VEC0
                 p.Dv = VEC0

@@ -13,7 +13,7 @@ using Printf
 using SmoothedParticles
 using DataFrames
 using Plots
-include(joinpath(UTILS_DIR,"new_packing.jl"))
+
 
 const folder_name = "pavelka_total_witch"
 const export_vars = (:u, :rho, :P, :θ, :T, :type)
@@ -23,9 +23,9 @@ Declare constants
 =#
 
 #geometry parameters
-const dom_height = 26.0   #height of the domain 
-const dom_length = 400.0  #length of the domain
-const dr = dom_height / 25  #average particle distance (decrease to make finer simulation)
+const dom_height = 26e3   #height of the domain 
+const dom_length = 400e3  #length of the domain
+const dr = dom_height / 75  #average particle distance (decrease to make finer simulation)
 const h0 = 1.8 * dr          #smoothing length    
 const bc_width = 6 * dr     #boundary width
 const hₘ = 0#100            #parameters for the Witch of Agnesi profile; mountain height
@@ -54,7 +54,7 @@ const T0 = 250 #initial temperature
 
 #temporal parameters
 const dt = 0.01 * h0 / c   #time step
-const t_end = 5.0 #end of simulation
+const t_end = 20 #end of simulation
 const dt_frame = t_end / 100 #how often data is saved
 
 #particle types
@@ -63,6 +63,7 @@ const WALL = 1.0
 const MOUNTAIN = 2.0
 
 
+include(joinpath(UTILS_DIR,"new_packing.jl"))
 """
 Declare the struct Particle <: AbstractParticle
 """
@@ -100,7 +101,7 @@ Define geometry and make particles
 """
 
 function make_system()
-        grid = Grid(dr, :hexagonal)
+        grid = Grid(dr, :hexagonal, K=1.0)
         domain = Rectangle(-dom_length / 2.0, 0.0, dom_length / 2.0, dom_height)
         fence = BoundaryLayer(domain, grid, bc_width)
 

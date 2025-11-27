@@ -12,7 +12,6 @@ using Printf
 using SmoothedParticles
 using DataFrames
 using Plots
-include(joinpath(UTILS_DIR, "new_packing.jl"))
 unicodeplots()
 
 const folder_name = "wcsph_perturbed_witch"
@@ -63,7 +62,7 @@ const T_bg = 250.0               # background (ie. initial) temperature
 
 # temporal parameters
 const dt = 0.01 * h0 / c       # time step
-const t_end = 2.0              # end of simulation
+const t_end = 20.0              # end of simulation
 const dt_frame = t_end / 100   # frame interval
 
 # particle types
@@ -76,6 +75,7 @@ const rho_floor = 1e-6
 const P_floor = 1e-10
 
 
+include(joinpath(UTILS_DIR, "new_packing.jl"))
 # ==============
 # Particle type
 # ==============

@@ -6,9 +6,10 @@ import StaticArrays
 import Match
 import Interpolations
 
-const PROJECT_ROOT = normpath(joinpath(@__DIR__, "../.."))
+const PROJECT_ROOT = normpath(joinpath(@__DIR__, ".."))
 const RESULTS_DIR = joinpath(PROJECT_ROOT, "results")
 const UTILS_DIR = normpath(joinpath(@__DIR__, "utils"))
+export PROJECT_ROOT, RESULTS_DIR, UTILS_DIR
 
 include("algebra.jl")
 export RealVector, VECX, VECY, VECZ, VEC0,

@@ -12,7 +12,6 @@ using Printf
 using SmoothedParticles
 using DataFrames
 using Plots
-include(joinpath(UTILS_DIR, "new_packing.jl"))
 unicodeplots()
 
 const folder_name = "hopkins_total_witch"
@@ -76,6 +75,7 @@ const rho_floor = 1e-6
 const P_floor = 1e-10
 
 
+include(joinpath(UTILS_DIR, "new_packing.jl"))
 # ==============
 # Particle type
 # ==============
